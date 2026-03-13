@@ -60,7 +60,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // 2. Broadcast via BitGo
     const result = await sendStealthTransaction({
-      walletId: wallet.bitgoWalletId,
+      walletId: wallet.bitgo_wallet_id,
       walletPassphrase,
       recipientAddress: derived.oneTimeAddress,
       amountSats,

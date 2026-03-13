@@ -117,7 +117,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const walletsQuery = supabase.from('wallets').select('id').eq('user_id', authResult.userId);
 
   const { data: userWallets } = await walletsQuery;
-  const walletIds = (userWallets ?? []).map((w) => w.id);
+  const walletIds = (userWallets ?? []).map((wallet: { id: string }) => wallet.id);
 
   let query = supabase
     .from('detected_payments')
