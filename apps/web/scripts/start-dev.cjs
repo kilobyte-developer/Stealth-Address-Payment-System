@@ -39,6 +39,7 @@ async function pickPort(preferredPort, maxOffset = 20) {
 async function main() {
   const preferredPort = Number(process.env.WEB_PORT || process.env.PORT || 3000);
   const selectedPort = await pickPort(preferredPort);
+  const nextCliPath = require.resolve('next/dist/bin/next');
 
   if (selectedPort !== preferredPort) {
     console.log(
@@ -48,7 +49,7 @@ async function main() {
     console.log(`[web:dev] Starting Next.js on ${selectedPort}`);
   }
 
-  const child = spawn('next', ['dev', '--port', String(selectedPort)], {
+  const child = spawn(process.execPath, [nextCliPath, 'dev', '--port', String(selectedPort)], {
     stdio: 'inherit',
     env: {
       ...process.env,

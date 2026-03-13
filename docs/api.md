@@ -49,11 +49,15 @@ Some endpoints return only `data` without `meta`.
 
 ## Authentication
 
-All `/api/v1` routes except auth routes require bearer token auth:
+For the currently implemented wallet and scan APIs, auth is temporarily skipped while backend
+integration is finalized.
 
-```http
-Authorization: Bearer <jwt_token>
-```
+- `/api/v1/wallets`
+- `/api/v1/wallets/:id/balance`
+- `/api/v1/transactions/send`
+- `/api/v1/scan`
+
+These routes currently operate in simulated user-context mode.
 
 ---
 
@@ -264,8 +268,8 @@ Validation rule: must match `^st:[a-zA-Z0-9]+:0x[0-9a-fA-F]{132}$`.
 
 - Method: GET
 - Route: /api/v1/wallets
-- Auth: Yes
-- Purpose: List all wallets for current user.
+- Auth: No (temporary)
+- Purpose: List wallets from the database in descending `created_at` order.
 
 ### Input
 
@@ -292,6 +296,16 @@ Validation rule: must match `^st:[a-zA-Z0-9]+:0x[0-9a-fA-F]{132}$`.
 }
 ```
 
+Returned fields:
+
+- `id`
+- `label`
+- `bitgo_wallet_id`
+- `network`
+- `public_view_key`
+- `public_spend_key`
+- `created_at`
+
 ### Errors
 
 - 500 INTERNAL_ERROR
@@ -302,7 +316,7 @@ Validation rule: must match `^st:[a-zA-Z0-9]+:0x[0-9a-fA-F]{132}$`.
 
 - Method: POST
 - Route: /api/v1/wallets
-- Auth: Yes
+- Auth: No (temporary)
 - Purpose: Create BitGo wallet and generate stealth keys.
 
 ### Input
@@ -326,9 +340,20 @@ Validation rule: must match `^st:[a-zA-Z0-9]+:0x[0-9a-fA-F]{132}$`.
       "publicViewKey": "02...",
       "publicSpendKey": "03..."
     }
+  },
+  "meta": {
+    "timestamp": "2026-03-13T10:00:00.000Z"
   }
 }
 ```
+
+### Flow
+
+1. Validates `label` and `passphrase` with Zod.
+2. Generates viewing/spending keypairs via `generateRandomStealthMetaAddress()`.
+3. Creates BitGo wallet via `wallets().generateWallet()`.
+4. Persists wallet + stealth key material to DB.
+5. Returns API response with `meta.timestamp`.
 
 ### Errors
 
@@ -341,8 +366,8 @@ Validation rule: must match `^st:[a-zA-Z0-9]+:0x[0-9a-fA-F]{132}$`.
 
 - Method: GET
 - Route: /api/v1/wallets/:id/balance
-- Auth: Yes
-- Purpose: Fetch wallet balance from BitGo for a user-owned wallet.
+- Auth: No (temporary)
+- Purpose: Fetch wallet balance from BitGo for a wallet stored in DB.
 
 ### Input
 
@@ -366,44 +391,9 @@ Validation rule: must match `^st:[a-zA-Z0-9]+:0x[0-9a-fA-F]{132}$`.
 
 ### Errors
 
+- 400 VALIDATION_ERROR
 - 404 WALLET_NOT_FOUND
 - 502 BITGO_ERROR
-
----
-
-## 7) Derive One-Time Address
-
-- Method: POST
-- Route: /api/v1/stealth/address
-- Auth: Yes
-- Purpose: Derive one-time destination address from receiver stealth public keys.
-
-### Input
-
-```json
-{
-  "publicViewKey": "02...",
-  "publicSpendKey": "03..."
-}
-```
-
-### Output (200)
-
-```json
-{
-  "data": {
-    "oneTimeAddress": "btc-address",
-    "ephemeralPublicKey": "02..."
-  },
-  "meta": {
-    "timestamp": "2026-03-13T10:00:00.000Z"
-  }
-}
-```
-
-### Errors
-
-- 400 INVALID_STEALTH_ADDRESS
 
 ---
 
@@ -411,7 +401,7 @@ Validation rule: must match `^st:[a-zA-Z0-9]+:0x[0-9a-fA-F]{132}$`.
 
 - **Method:** POST
 - **Route:** /api/v1/transactions/send
-- **Auth:** Yes
+- **Auth:** No (temporary)
 - **SDK calls:** `generateStealthAddress()`, `stealthClient.prepareAnnounce()`
 - **Purpose:** Derive an ERC-5564 stealth address, broadcast via BitGo, and prepare the ERC-5564 announcement payload.
 
@@ -455,13 +445,17 @@ Validation rule: must match `^st:[a-zA-Z0-9]+:0x[0-9a-fA-F]{132}$`.
 - 404 WALLET_NOT_FOUND
 - 500 TX_BUILD_FAILED
 
+### Method Guard
+
+- `GET /api/v1/transactions/send` returns 405 `METHOD_NOT_ALLOWED`.
+
 ---
 
 ## 9) Scan Blockchain On Demand
 
 - **Method:** POST
 - **Route:** /api/v1/scan
-- **Auth:** Yes
+- **Auth:** No (temporary)
 - **SDK call:** `stealthClient.watchAnnouncementsForUser()`
 - **Purpose:** Poll the ERC5564Announcer contract for on-chain announcements that match the user's stealth keypair and persist any new detected payments.
 
@@ -507,8 +501,8 @@ Validation rule: must match `^st:[a-zA-Z0-9]+:0x[0-9a-fA-F]{132}$`.
 
 - Method: GET
 - Route: /api/v1/scan
-- Auth: Yes
-- Purpose: List detected payments for user wallets.
+- Auth: No (temporary)
+- Purpose: List detected payments from `detected_payments` table.
 
 ### Input
 
@@ -544,7 +538,8 @@ GET /api/v1/scan?walletId=ckxxxxxxxxxxxxxxxxxxxx
 
 ### Errors
 
-- Standard auth errors if token missing/invalid
+- 400 VALIDATION_ERROR (invalid `walletId` query format)
+- 500 INTERNAL_ERROR
 
 ---
 
@@ -569,3 +564,8 @@ GET /api/v1/scan?walletId=ckxxxxxxxxxxxxxxxxxxxx
 ### Shared Client
 
 `apps/web/src/lib/stealthClient.ts` exports a singleton `stealthClient` used by the send and scan routes for on-chain operations (prepareAnnounce, watchAnnouncementsForUser).
+
+### Persistence/Infra
+
+- `apps/web/src/lib/prisma.ts` exports a Prisma singleton used by versioned wallet/transaction/scan routes.
+- `apps/web/src/lib/bitgo.ts` exports `getBitGoCoin(network)` used to resolve BitGo coin handlers by network.
