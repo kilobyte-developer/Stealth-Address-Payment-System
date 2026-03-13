@@ -3,25 +3,31 @@
 @tailwind utilities;
 
 @layer base {
+  @font-face {
+    font-family: 'General Sans Fallback';
+    src: local('Arial');
+    font-display: swap;
+  }
+
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --background: 222 47% 7%;
+    --foreground: 210 40% 98%;
+    --card: 222 38% 10%;
+    --card-foreground: 210 40% 98%;
+    --border: 215 27% 18%;
+    --input: 215 27% 18%;
+    --primary: 189 100% 58%;
+    --primary-foreground: 222 47% 7%;
+    --secondary: 227 26% 16%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 225 23% 14%;
+    --muted-foreground: 217 16% 67%;
+    --accent: 267 84% 64%;
+    --accent-foreground: 210 40% 98%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    --ring: 189 100% 58%;
+    --radius: 1rem;
   }
 
   .dark {
@@ -51,5 +57,103 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-general-sans), 'General Sans Fallback', ui-sans-serif, system-ui, sans-serif;
+    background-image:
+      radial-gradient(circle at top, rgba(56, 189, 248, 0.16), transparent 30%),
+      radial-gradient(circle at 20% 20%, rgba(139, 92, 246, 0.16), transparent 22%),
+      radial-gradient(circle at 80% 30%, rgba(16, 185, 129, 0.12), transparent 20%),
+      linear-gradient(180deg, rgba(6, 10, 22, 1) 0%, rgba(8, 12, 27, 1) 45%, rgba(3, 6, 16, 1) 100%);
+    min-height: 100vh;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  ::selection {
+    background: rgba(56, 189, 248, 0.28);
+    color: white;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+  }
+
+  .landing-grid {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+    background-size: 72px 72px;
+    mask-image: radial-gradient(circle at center, black 42%, transparent 90%);
+  }
+
+  .text-gradient-premium {
+    @apply bg-gradient-to-r from-white via-cyan-100 to-violet-200 bg-clip-text text-transparent;
+  }
+
+  .shadow-glow-cyan {
+    box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.1), 0 20px 60px rgba(34, 211, 238, 0.12);
+  }
+
+  .app-shell-panel {
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(15, 23, 42, 0.48));
+    backdrop-filter: blur(22px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 18px 60px rgba(2, 6, 23, 0.3);
+  }
+
+  .app-section-title {
+    @apply text-3xl font-medium tracking-[-0.03em] text-white md:text-4xl;
+  }
+
+  .metric-tile {
+    @apply app-shell-panel rounded-[1.5rem] p-5;
+  }
+
+  .input-premium {
+    @apply w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-cyan-300/30 focus:outline-none focus:ring-2 focus:ring-cyan-400/15;
+  }
+
+  .button-premium {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-violet-500 px-5 py-3 text-sm font-medium text-slate-950 shadow-[0_16px_44px_rgba(56,189,248,0.3)] transition hover:scale-[1.02];
+  }
+
+  .animate-float-slow {
+    animation: float-slow 9s ease-in-out infinite;
+  }
+
+  .animate-float-delay {
+    animation: float-slow 11s ease-in-out infinite 1.5s;
+  }
+
+  .animate-pulse-soft {
+    animation: pulse-soft 3.8s ease-in-out infinite;
+  }
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -12px, 0);
+  }
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
   }
 }
