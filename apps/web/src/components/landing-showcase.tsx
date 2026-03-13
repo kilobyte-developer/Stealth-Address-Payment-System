@@ -1,151 +1,144 @@
 import {
+  BadgeCheck,
   Building2,
   ChartNoAxesCombined,
   Cpu,
   Globe,
   Rocket,
-  Scan,
   ShieldCheck,
-  Sparkles,
-  Zap,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 
-const logos = ['FINLAB', 'CHAINOPS', 'WALLETGRID', 'BLOCKHAVEN', 'CRYPTOSHIELD', 'NEXUS PAY'];
+const matrix = [
+  {
+    title: 'Stealth layer',
+    text: 'One-time derived outputs per payment with deterministic receiver recovery.',
+  },
+  {
+    title: 'Execution rails',
+    text: 'Wallet orchestration remains on proven institutional infrastructure.',
+  },
+  {
+    title: 'Detection loop',
+    text: 'View-key scanning keeps spend authority isolated from monitoring.',
+  },
+] as const;
 
 const useCases = [
   {
     icon: ShieldCheck,
-    title: 'Treasury-ready settlement',
-    body: 'Reduce address-linking risk for high-value flows while keeping operator controls clean.',
+    title: 'Treasury settlement',
+    body: 'Protect high-value inflows from static receive-address correlation.',
   },
   {
     icon: Building2,
     title: 'Partner payouts',
-    body: 'Ship merchant payouts over Bitcoin rails with less public payment graph exposure.',
+    body: 'Deliver merchant payouts while keeping payment graph exposure lower.',
   },
   {
     icon: Globe,
-    title: 'Cross-border collections',
-    body: 'Accept global BTC payments with tighter metadata boundaries.',
+    title: 'Global collections',
+    body: 'Accept BTC globally with cleaner metadata boundaries.',
   },
-];
-
-const systemStats = [
-  { label: 'Stealth keypair split', value: 'View + Spend' },
-  { label: 'Address derivation', value: 'ECDH + Hash map' },
-  { label: 'Scanner cadence', value: 'Near real-time' },
-  { label: 'API architecture', value: 'Typed + modular' },
-];
+] as const;
 
 const highlights = [
-  {
-    icon: Rocket,
-    title: 'Launch-ready interface',
-    body: 'Polished surfaces and decisive CTAs from the first screen.',
-  },
-  {
-    icon: Scan,
-    title: 'Motion-led storytelling',
-    body: 'Scroll reveals and hover depth keep technical content intuitive.',
-  },
-  {
-    icon: Cpu,
-    title: 'Composable architecture',
-    body: 'Modular sections support rapid iteration without layout churn.',
-  },
-];
+  { icon: Rocket, value: 'Launch-ready UI', note: 'Minimal friction onboarding' },
+  { icon: Cpu, value: 'Composable services', note: 'Fast engineering iteration' },
+  { icon: ChartNoAxesCombined, value: 'Operational signal', note: 'Readable state and flow' },
+] as const;
 
 export function LandingShowcase(): React.JSX.Element {
   return (
-    <>
-      <section id="signal" className="relative px-6 py-20 md:px-8" data-reveal>
-        <div className="mx-auto max-w-6xl space-y-10">
-          <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-300/20 bg-fuchsia-400/10 px-4 py-2 text-xs uppercase tracking-[0.24em] text-fuchsia-100/85">
-              <Sparkles className="h-3.5 w-3.5" />
-              Platform Signal
-            </div>
-            <h2 className="text-3xl font-light tracking-tight text-white md:text-5xl">
-              Premium visuals and modern motion tuned for crypto-native trust.
-            </h2>
-          </div>
-
-          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4" data-reveal>
-            {systemStats.map((stat) => (
-              <div key={stat.label} className="glass-panel rounded-[1.6rem] p-5">
-                <div className="text-xs uppercase tracking-[0.2em] text-white/45">{stat.label}</div>
-                <div className="mt-3 text-lg font-light text-white">{stat.value}</div>
+    <section id="signal" className="relative px-6 py-24 md:px-8" data-reveal>
+      <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1.15fr,0.85fr]">
+        <Card data-glow>
+          <CardHeader>
+            <Badge variant="cyan" className="w-fit">
+              Platform matrix
+            </Badge>
+            <CardTitle className="text-3xl md:text-4xl">
+              From cryptography to product clarity.
+            </CardTitle>
+            <CardDescription className="max-w-2xl">
+              Distinct layers make the system easier to trust, explain, and ship.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {matrix.map((item, index) => (
+              <div
+                key={item.title}
+                className="rounded-2xl border border-white/8 bg-white/[0.03] p-5"
+              >
+                <div className="mb-2 flex items-center gap-3">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-xs text-white/60">
+                    {index + 1}
+                  </span>
+                  <div className="text-white">{item.title}</div>
+                </div>
+                <p className="text-sm leading-7 text-white/58">{item.text}</p>
               </div>
             ))}
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="glass-panel overflow-hidden rounded-[1.8rem] p-5" data-reveal>
-            <div className="mb-4 flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-white/45">
-              <ChartNoAxesCombined className="h-3.5 w-3.5" />
-              Visual partner cloud
-            </div>
-            <div className="relative overflow-hidden">
-              <div className="animate-[marquee_24s_linear_infinite] whitespace-nowrap">
-                {[...logos, ...logos].map((logo, index) => (
-                  <span
-                    key={`${logo}-${index}`}
-                    className="mx-2 inline-flex rounded-full border border-white/12 bg-white/5 px-5 py-2 text-sm font-light tracking-[0.16em] text-white/75"
+        <div className="space-y-6">
+          <Card data-glow>
+            <CardHeader>
+              <CardTitle className="text-xl">Use-case catalog</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {useCases.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <div
+                    key={item.title}
+                    className="rounded-xl border border-white/10 bg-white/[0.03] p-4"
                   >
-                    {logo}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="experience" className="relative px-6 py-20 md:px-8" data-reveal>
-        <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-2">
-          <div className="space-y-6">
-            {highlights.map((item) => {
-              const Icon = item.icon;
-              return (
-                <article key={item.title} className="glass-panel rounded-[1.8rem] p-6" data-reveal>
-                  <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-fuchsia-400/20 to-amber-300/15 text-fuchsia-100">
-                    <Icon className="h-5 w-5" />
+                    <div className="flex items-center gap-2 text-sm text-white">
+                      <Icon className="h-4 w-4 text-cyan-200" />
+                      {item.title}
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-white/55">{item.body}</p>
                   </div>
-                  <h3 className="text-xl font-light text-white">{item.title}</h3>
-                  <p className="mt-3 text-sm leading-7 text-white/55">{item.body}</p>
-                </article>
-              );
-            })}
-          </div>
+                );
+              })}
+            </CardContent>
+          </Card>
 
-          <div className="space-y-5" data-reveal>
-            <div className="glass-panel rounded-[1.8rem] p-6">
-              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 py-2 text-xs uppercase tracking-[0.2em] text-cyan-100">
-                <Zap className="h-3.5 w-3.5" />
-                Specialized use cases
-              </div>
-
-              <div className="space-y-4">
-                {useCases.map((item) => {
+          <Card data-glow>
+            <CardHeader>
+              <CardTitle className="text-xl">Signal panel</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {highlights.map((item) => {
                   const Icon = item.icon;
                   return (
                     <div
-                      key={item.title}
-                      className="rounded-2xl border border-white/10 bg-white/5 p-5"
-                      data-reveal
+                      key={item.value}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5"
                     >
-                      <div className="flex items-center gap-2 text-sm font-light text-white">
-                        <Icon className="h-4 w-4 text-cyan-200" />
-                        {item.title}
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-4 w-4 text-fuchsia-200" />
+                        <div className="text-sm text-white/88">{item.value}</div>
                       </div>
-                      <p className="mt-3 text-sm leading-7 text-white/55">{item.body}</p>
+                      <div className="text-xs text-white/45">{item.note}</div>
                     </div>
                   );
                 })}
               </div>
-            </div>
-          </div>
+              <Separator className="my-4" />
+              <div className="flex items-center gap-2 text-xs text-emerald-200/80">
+                <BadgeCheck className="h-4 w-4" />
+                Scanner and dashboard remain operation-ready by default.
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      </section>
-    </>
+      </div>
+    </section>
   );
 }

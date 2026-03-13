@@ -1,44 +1,63 @@
 import { Quote } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 const testimonials = [
   {
     quote:
-      'The stealth-address layer gave us a cleaner privacy story without replacing our existing wallet operations.',
-    author: 'Head of Payments, Fintech Team',
+      'Stealth addressing gave us real privacy differentiation without replacing wallet operations.',
+    author: 'Head of Payments',
+    company: 'Fintech Team',
   },
   {
-    quote:
-      'The dashboard feels premium and focused. It communicates technical trust in the first minute.',
-    author: 'Product Lead, Crypto Infrastructure',
+    quote: 'The scanner-first architecture made detection understandable for both ops and product.',
+    author: 'Engineering Manager',
+    company: 'Treasury Ops',
   },
   {
-    quote:
-      'We loved the scanner-first architecture. Fast detection, clear state, low operational friction.',
-    author: 'Engineering Manager, Treasury Ops',
+    quote: 'Design quality made the protocol story immediately credible in stakeholder demos.',
+    author: 'Product Lead',
+    company: 'Crypto Infra',
   },
 ] as const;
 
 export function LandingTestimonials(): React.JSX.Element {
   return (
-    <section id="testimonials" className="relative px-6 py-20 md:px-8" data-reveal>
+    <section id="testimonials" className="relative px-6 py-24 md:px-8" data-reveal>
       <div className="mx-auto max-w-6xl">
-        <div className="mb-10 max-w-2xl space-y-4" data-reveal>
-          <div className="text-xs uppercase tracking-[0.24em] text-cyan-200/70">Testimonials</div>
-          <h2 className="text-3xl font-light tracking-tight text-white md:text-5xl">
-            Built to feel credible from first interaction.
+        <div className="mb-10 space-y-4" data-reveal>
+          <Badge variant="cyan" className="w-fit">
+            Testimonials
+          </Badge>
+          <h2 className="max-w-3xl text-3xl font-light tracking-tight text-white md:text-5xl">
+            Teams trust the product because the experience feels as rigorous as the protocol.
           </h2>
         </div>
 
-        <div className="grid gap-5 md:grid-cols-3" data-reveal>
-          {testimonials.map((item) => (
-            <article key={item.author} className="glass-panel rounded-[1.7rem] p-6">
+        <div className="grid gap-5 lg:grid-cols-3" data-reveal>
+          <Card className="lg:col-span-2" data-glow>
+            <CardHeader>
               <Quote className="h-5 w-5 text-fuchsia-200" />
-              <p className="mt-4 text-sm leading-7 text-white/75">{item.quote}</p>
-              <div className="mt-5 text-xs uppercase tracking-[0.2em] text-white/45">
-                {item.author}
-              </div>
-            </article>
-          ))}
+              <CardTitle className="text-2xl md:text-3xl">“{testimonials[0].quote}”</CardTitle>
+              <CardDescription>
+                {testimonials[0].author} · {testimonials[0].company}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+
+          <div className="space-y-5">
+            {testimonials.slice(1).map((item) => (
+              <Card key={item.author} data-glow>
+                <CardHeader>
+                  <CardTitle className="text-lg">“{item.quote}”</CardTitle>
+                  <CardDescription>
+                    {item.author} · {item.company}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-0" />
+              </Card>
+            ))}
+          </div>
         </div>
       </div>
     </section>

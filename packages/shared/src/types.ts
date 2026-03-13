@@ -22,9 +22,9 @@ export interface EphemeralKey {
 }
 
 export interface DerivedOneTimeAddress {
-  oneTimeAddress: string; // P = S·G + B (33-byte hex)
-  ephemeralPublicKey: string; // R (33-byte hex) — must be embedded in tx
-  sharedSecret: string; // S = H(r·A) (32-byte hex) — for debugging only
+  oneTimeAddress: string; // P = S·G + B (33-byte compressed hex)
+  ephemeralPublicKey: string; // R (33-byte compressed hex) — must be embedded in tx
+  sharedSecret: string; // S = H(r·A) (32-byte hex) — for deriving spending key
 }
 
 export interface ScanResult {

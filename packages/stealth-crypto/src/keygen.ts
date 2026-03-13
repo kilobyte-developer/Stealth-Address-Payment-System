@@ -55,8 +55,10 @@ export function hashPoint(point: Uint8Array): Uint8Array {
  */
 export function addScalars(a: string, b: string): string {
   const n = secp.CURVE.n;
-  const sum = (hexToBytes(a).reduce((acc, byte) => (acc << 8n) | BigInt(byte), 0n) +
-    hexToBytes(b).reduce((acc, byte) => (acc << 8n) | BigInt(byte), 0n)) % n;
+  const sum =
+    (hexToBytes(a).reduce((acc, byte) => (acc << 8n) | BigInt(byte), 0n) +
+      hexToBytes(b).reduce((acc, byte) => (acc << 8n) | BigInt(byte), 0n)) %
+    n;
   return sum.toString(16).padStart(64, '0');
 }
 
