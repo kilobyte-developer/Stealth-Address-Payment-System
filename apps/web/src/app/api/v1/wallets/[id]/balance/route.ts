@@ -1,26 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin, type Wallet as DbWallet } from '@stealth/db';
-import { getWalletBalance } from '@stealth/bitgo-client';
-import { requireAuth } from '@/lib/auth';
+import { Prisma } from '@prisma/client';
+import { z } from 'zod';
+import { getBitGoCoin } from '@/lib/bitgo';
+import { prisma } from '@/lib/prisma';
+
+type WalletLookupRow = {
+  id: string;
+  bitgo_wallet_id: string;
+  network: string;
+};
+
+const walletIdSchema = z.object({
+  id: z
+    .string()
+    .trim()
+    .regex(/^(c[a-z0-9]{8,}|[0-9a-fA-F-]{36})$/, 'Invalid wallet id format'),
+});
 
 // GET /api/v1/wallets/[id]/balance
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ): Promise<NextResponse> {
-  const authResult = await requireAuth(request);
-  if (!authResult.ok) return authResult.response;
+  const parsed = walletIdSchema.safeParse(params);
+  if (!parsed.success) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: parsed.error.issues[0]?.message ?? 'Invalid wallet id.',
+        },
+      },
+      { status: 400 }
+    );
+  }
 
-  const supabase = getSupabaseAdmin();
-  const { data: walletData, error } = await supabase
-    .from('wallets')
-    .select('id, bitgo_wallet_id')
-    .eq('id', params.id)
-    .eq('user_id', authResult.userId)
-    .single();
-  const wallet = walletData as Pick<DbWallet, 'id' | 'bitgo_wallet_id'> | null;
+  const walletRows = await prisma.$queryRaw<WalletLookupRow[]>(Prisma.sql`
+    SELECT id, bitgo_wallet_id, network
+    FROM wallets
+    WHERE id = ${parsed.data.id}
+    LIMIT 1
+  `);
 
-  if (error || !wallet) {
+  const wallet = walletRows[0];
+
+  if (!wallet) {
     return NextResponse.json(
       { error: { code: 'WALLET_NOT_FOUND', message: 'Wallet not found.' } },
       { status: 404 }
@@ -28,13 +52,34 @@ export async function GET(
   }
 
   try {
-    const balance = await getWalletBalance(wallet.bitgo_wallet_id);
-    return NextResponse.json({ data: balance, meta: { timestamp: new Date().toISOString() } });
-  } catch (err) {
-    console.error('[GET /api/v1/wallets/:id/balance]', err);
+    const coin = getBitGoCoin(wallet.network);
+    const bitgoWallet = await coin.wallets().get({ id: wallet.bitgo_wallet_id });
+    const source = bitgoWallet as {
+      balanceString?: string;
+      confirmedBalanceString?: string;
+      spendableBalanceString?: string;
+    };
+
+    return NextResponse.json({
+      data: {
+        balanceString: source.balanceString ?? '0',
+        confirmedBalanceString: source.confirmedBalanceString ?? '0',
+        spendableBalanceString: source.spendableBalanceString ?? '0',
+      },
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (error) {
+    console.error('[GET /api/v1/wallets/:id/balance]', error);
     return NextResponse.json(
       { error: { code: 'BITGO_ERROR', message: 'Failed to fetch balance.' } },
       { status: 502 }
     );
   }
+}
+
+export async function POST(): Promise<NextResponse> {
+  return NextResponse.json(
+    { error: { code: 'METHOD_NOT_ALLOWED', message: 'Use GET for wallet balances.' } },
+    { status: 405 }
+  );
 }

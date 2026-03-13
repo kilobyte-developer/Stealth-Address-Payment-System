@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import {
-  getSupabaseAdmin,
-  type Transaction,
-  type TransactionInsert,
-  type Wallet as DbWallet,
-} from '@stealth/db';
+import { Prisma } from '@prisma/client';
 import { generateStealthAddress, VALID_SCHEME_ID } from '@scopelift/stealth-address-sdk';
 import { stealthClient } from '@/lib/stealthClient';
-import { sendStealthTransaction } from '@stealth/bitgo-client';
-import { requireAuth } from '@/lib/auth';
+import { getBitGoCoin } from '@/lib/bitgo';
+import { prisma } from '@/lib/prisma';
 
 // ERC5564Announcer contract address (Sepolia / mainnet address from the ERC-5564 spec).
 // Override via env var for other networks.
@@ -18,12 +13,15 @@ const ERC5564_ADDRESS =
   '0x55649E01B5Df198D18D95b5cc5051630cfD45564';
 
 const sendSchema = z.object({
-  senderWalletId: z.string().cuid(),
+  senderWalletId: z
+    .string()
+    .trim()
+    .regex(/^(c[a-z0-9]{8,}|[0-9a-fA-F-]{36})$/, 'Invalid sender wallet id'),
   // ERC-5564 meta-address URI: st:<chain>:0x<132-hex>
   receiverStealthMetaAddressURI: z
     .string()
     .regex(/^st:[a-zA-Z0-9]+:0x[0-9a-fA-F]{132}$/, 'Invalid ERC-5564 stealth meta-address URI'),
-  amountSats: z.number().int().positive().min(1000),
+  amountSats: z.number().int().positive(),
   walletPassphrase: z.string().min(1),
   // Ethereum sender address for the ERC-5564 announcement (optional – skipped if absent).
   senderAddress: z
@@ -32,16 +30,40 @@ const sendSchema = z.object({
     .optional(),
 });
 
+type WalletRow = {
+  id: string;
+  bitgo_wallet_id: string;
+  network: string;
+};
+
+type TxRow = {
+  tx_hash: string;
+  amount_sats: number;
+  status: string;
+  one_time_address: string | null;
+  ephemeral_public_key: string | null;
+};
+
+async function readJsonBody(request: NextRequest): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    return null;
+  }
+}
+
 // POST /api/v1/transactions/send
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const authResult = await requireAuth(request);
-  if (!authResult.ok) return authResult.response;
-
-  const body = await request.json();
+  const body = await readJsonBody(request);
   const parsed = sendSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: { code: 'VALIDATION_ERROR', message: parsed.error.message } },
+      {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: parsed.error.issues[0]?.message ?? 'Invalid request body.',
+        },
+      },
       { status: 400 }
     );
   }
@@ -54,18 +76,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     senderAddress,
   } = parsed.data;
 
-  // Verify wallet belongs to user
-  const supabase = getSupabaseAdmin();
-  const { data: walletData } = await supabase
-    .from('wallets')
-    .select('id, bitgo_wallet_id, encrypted_view_priv_key, public_view_key, public_spend_key')
-    .eq('id', senderWalletId)
-    .eq('user_id', authResult.userId)
-    .single();
-  const wallet = walletData as Pick<
-    DbWallet,
-    'id' | 'bitgo_wallet_id' | 'encrypted_view_priv_key' | 'public_view_key' | 'public_spend_key'
-  > | null;
+  const walletRows = await prisma.$queryRaw<WalletRow[]>(Prisma.sql`
+    SELECT id, bitgo_wallet_id, network
+    FROM wallets
+    WHERE id = ${senderWalletId}
+    LIMIT 1
+  `);
+
+  const wallet = walletRows[0];
   if (!wallet) {
     return NextResponse.json(
       { error: { code: 'WALLET_NOT_FOUND', message: 'Sender wallet not found.' } },
@@ -100,36 +118,51 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // 3. Broadcast via BitGo (Bitcoin layer).
-    const result = await sendStealthTransaction({
-      walletId: wallet.bitgo_wallet_id,
+    // 3. Broadcast via BitGo.
+    const coin = getBitGoCoin(wallet.network);
+    const senderWallet = await coin.wallets().get({ id: wallet.bitgo_wallet_id });
+
+    const bitgoResult = await (
+      senderWallet as {
+        sendMany: (options: {
+          recipients: Array<{ address: string; amount: string }>;
+          walletPassphrase: string;
+          comment?: string;
+          label?: string;
+        }) => Promise<{ txid: string; status?: string }>;
+      }
+    ).sendMany({
+      recipients: [{ address: stealthAddress, amount: String(amountSats) }],
       walletPassphrase,
-      recipientAddress: stealthAddress,
-      amountSats,
-      ephemeralPublicKey,
+      comment: `stealth:ephemeral:${ephemeralPublicKey}`,
+      label: ephemeralPublicKey,
     });
 
-    // 4. Record in Supabase.
-    const txInsert: TransactionInsert = {
-      wallet_id: wallet.id,
-      tx_hash: result.txHash,
-      direction: 'send',
-      amount_sats: amountSats,
-      ephemeral_public_key: ephemeralPublicKey,
-      one_time_address: stealthAddress,
-      status: 'pending',
-    };
+    // 4. Record transaction metadata.
+    const txRows = await prisma.$queryRaw<TxRow[]>(Prisma.sql`
+      INSERT INTO transactions (
+        wallet_id,
+        tx_hash,
+        direction,
+        amount_sats,
+        ephemeral_public_key,
+        one_time_address,
+        status
+      )
+      VALUES (
+        ${wallet.id},
+        ${bitgoResult.txid},
+        'send',
+        ${amountSats},
+        ${ephemeralPublicKey},
+        ${stealthAddress},
+        'pending'
+      )
+      RETURNING tx_hash, amount_sats, status, one_time_address, ephemeral_public_key
+    `);
 
-    const { data: txData, error: txError } = await supabase
-      .from('transactions')
-      .insert(txInsert as never)
-      .select()
-      .single();
-    const tx = txData as Transaction | null;
-
-    if (txError || !tx) {
-      throw new Error(txError?.message ?? 'Failed to record transaction');
-    }
+    const tx = txRows[0];
+    if (!tx) throw new Error('Failed to record transaction');
 
     return NextResponse.json(
       {
@@ -142,6 +175,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           status: tx.status,
           ...(announcePayload ? { announcePayload } : {}),
         },
+        meta: { timestamp: new Date().toISOString() },
       },
       { status: 201 }
     );
@@ -152,4 +186,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 500 }
     );
   }
+}
+
+export async function GET(): Promise<NextResponse> {
+  return NextResponse.json(
+    { error: { code: 'METHOD_NOT_ALLOWED', message: 'Use POST to send transactions.' } },
+    { status: 405 }
+  );
 }

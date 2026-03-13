@@ -92,3 +92,31 @@ pnpm test:watch
   derived `stealthAddress` corresponds to a private key the receiver can reconstruct.
 - Concurrency checks confirm the SDK's internal `generatePrivateKey()` produces collision-resistant
   ephemeral keys even under parallel load.
+
+---
+
+## V1 Route Tests (Wallet/Send/Scan)
+
+A dedicated suite now covers the newly added versioned routes:
+
+- **Suite:** `apps/web/src/app/api/v1/__tests__/v1-api.test.ts`
+- **Count:** 23 tests
+- **Approach:** Route handler unit/integration style with mocked Prisma, BitGo, stealth SDK, and stealthClient
+
+### Covered V1 Routes
+
+- `GET /api/v1/wallets`
+- `POST /api/v1/wallets`
+- `GET /api/v1/wallets/:id/balance`
+- `POST /api/v1/transactions/send`
+- `POST /api/v1/scan`
+- `GET /api/v1/scan`
+
+### What is verified
+
+- Success response shape and `meta.timestamp` behavior
+- Validation failures (`VALIDATION_ERROR`) for malformed body/query/path inputs
+- Not-found flows (`WALLET_NOT_FOUND`) and service failures (`BITGO_ERROR`, `TX_BUILD_FAILED`, `SCAN_FAILED`, `INTERNAL_ERROR`)
+- Send flow with and without ERC-5564 `announcePayload`
+- Scan deduplication behavior by `tx_hash`
+- Method guards that return `405 METHOD_NOT_ALLOWED` for unsupported methods

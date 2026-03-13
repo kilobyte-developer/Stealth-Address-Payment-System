@@ -1,93 +1,147 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { getSupabaseAdmin, type Wallet as DbWallet, type WalletInsert } from '@stealth/db';
-import { generateStealthKeys } from '@stealth/crypto';
-import { createBitGoWallet } from '@stealth/bitgo-client';
-import { requireAuth } from '@/lib/auth';
+import { generateRandomStealthMetaAddress } from '@scopelift/stealth-address-sdk';
+import { getBitGoCoin } from '@/lib/bitgo';
+import { prisma } from '@/lib/prisma';
+
+type WalletRow = {
+  id: string;
+  label: string;
+  bitgo_wallet_id: string;
+  network: string;
+  public_view_key: string;
+  public_spend_key: string;
+  created_at: Date | string;
+};
+
+type UserIdRow = {
+  user_id: string;
+};
 
 const createWalletSchema = z.object({
-  label: z.string().min(1).max(100),
-  passphrase: z.string().min(8),
+  label: z.string().trim().min(1, 'Label is required').max(100),
+  passphrase: z.string().min(8, 'Passphrase must be at least 8 characters'),
 });
 
-// GET /api/v1/wallets — list wallets for current user
-export async function GET(request: NextRequest): Promise<NextResponse> {
-  const authResult = await requireAuth(request);
-  if (!authResult.ok) return authResult.response;
-
-  const supabase = getSupabaseAdmin();
-
-  const { data: walletsData, error } = await supabase
-    .from('wallets')
-    .select('id, label, bitgo_wallet_id, network, public_view_key, public_spend_key, created_at')
-    .eq('user_id', authResult.userId)
-    .order('created_at', { ascending: false });
-  const wallets = (walletsData ?? []) as Array<
-    Pick<
-      DbWallet,
-      | 'id'
-      | 'label'
-      | 'bitgo_wallet_id'
-      | 'network'
-      | 'public_view_key'
-      | 'public_spend_key'
-      | 'created_at'
-    >
-  >;
-
-  if (error) {
-    return NextResponse.json(
-      { error: { code: 'INTERNAL_ERROR', message: error.message } },
-      { status: 500 }
-    );
+async function readJsonBody(request: NextRequest): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    return null;
   }
-
-  return NextResponse.json({ data: wallets, meta: { timestamp: new Date().toISOString() } });
 }
 
-// POST /api/v1/wallets — create wallet + stealth keys
-export async function POST(request: NextRequest): Promise<NextResponse> {
-  const authResult = await requireAuth(request);
-  if (!authResult.ok) return authResult.response;
+function internalError(message = 'An internal error occurred.'): NextResponse {
+  return NextResponse.json({ error: { code: 'INTERNAL_ERROR', message } }, { status: 500 });
+}
 
-  const body = await request.json();
+// GET /api/v1/wallets
+export async function GET(): Promise<NextResponse> {
+  try {
+    const wallets = await prisma.$queryRaw<WalletRow[]>(Prisma.sql`
+      SELECT
+        id,
+        label,
+        bitgo_wallet_id,
+        network,
+        public_view_key,
+        public_spend_key,
+        created_at
+      FROM wallets
+      ORDER BY created_at DESC
+    `);
+
+    return NextResponse.json({
+      data: wallets,
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (error) {
+    console.error('[GET /api/v1/wallets]', error);
+    return internalError('Failed to fetch wallets.');
+  }
+}
+
+// POST /api/v1/wallets
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const body = await readJsonBody(request);
   const parsed = createWalletSchema.safeParse(body);
+
   if (!parsed.success) {
     return NextResponse.json(
-      { error: { code: 'VALIDATION_ERROR', message: parsed.error.message } },
+      {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: parsed.error.issues[0]?.message ?? 'Invalid request body.',
+        },
+      },
       { status: 400 }
     );
   }
 
   const { label, passphrase } = parsed.data;
+  const network = process.env.BITGO_COIN ?? 'tbtc';
 
   try {
-    // 1. Generate stealth key pairs
-    const stealthKeys = generateStealthKeys();
+    const ownerRows = await prisma.$queryRaw<UserIdRow[]>(Prisma.sql`
+      SELECT user_id
+      FROM wallets
+      ORDER BY created_at ASC
+      LIMIT 1
+    `);
 
-    // 2. Create BitGo wallet
-    const { walletId: bitgoWalletId } = await createBitGoWallet(label, passphrase);
+    const ownerUserId = ownerRows[0]?.user_id;
+    if (!ownerUserId) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'WALLET_CREATION_FAILED',
+            message: 'No simulated user context found. Seed at least one wallet/user record first.',
+          },
+        },
+        { status: 500 }
+      );
+    }
 
-    // 3. Persist to Supabase (private keys — encrypt with KMS in prod!)
-    const supabase = getSupabaseAdmin();
-    const walletInsert: WalletInsert = {
-      user_id: authResult.userId,
+    const { viewingPrivateKey, viewingPublicKey, spendingPrivateKey, spendingPublicKey } =
+      generateRandomStealthMetaAddress();
+
+    const coin = getBitGoCoin(network);
+    const bitgoWalletResult = await coin.wallets().generateWallet({
       label,
-      bitgo_wallet_id: bitgoWalletId,
-      public_view_key: stealthKeys.viewKey.publicKey,
-      public_spend_key: stealthKeys.spendKey.publicKey,
-      encrypted_view_priv_key: stealthKeys.viewKey.privateKey,
-      encrypted_spend_priv_key: stealthKeys.spendKey.privateKey,
-    };
-    const { data: walletData, error } = await supabase
-      .from('wallets')
-      .insert(walletInsert as never)
-      .select()
-      .single();
-    const wallet = walletData as DbWallet | null;
+      passphrase,
+      enterprise: process.env.BITGO_ENTERPRISE_ID,
+      passcodeEncryptionCode: passphrase,
+    });
+    const bitgoWalletId = bitgoWalletResult.wallet.id();
 
-    if (error || !wallet) {
-      throw new Error(error?.message ?? 'Insert failed');
+    const inserted = await prisma.$queryRaw<WalletRow[]>(Prisma.sql`
+      INSERT INTO wallets (
+        user_id,
+        label,
+        bitgo_wallet_id,
+        network,
+        encrypted_view_priv_key,
+        encrypted_spend_priv_key,
+        public_view_key,
+        public_spend_key
+      )
+      VALUES (
+        ${ownerUserId},
+        ${label},
+        ${bitgoWalletId},
+        ${network},
+        ${viewingPrivateKey},
+        ${spendingPrivateKey},
+        ${viewingPublicKey},
+        ${spendingPublicKey}
+      )
+      RETURNING id, label, bitgo_wallet_id, network, public_view_key, public_spend_key, created_at
+    `);
+
+    const wallet = inserted[0];
+    if (!wallet) {
+      return internalError('Failed to persist wallet.');
     }
 
     return NextResponse.json(
@@ -101,11 +155,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             publicSpendKey: wallet.public_spend_key,
           },
         },
+        meta: { timestamp: new Date().toISOString() },
       },
       { status: 201 }
     );
-  } catch (err) {
-    console.error('[POST /api/v1/wallets]', err);
+  } catch (error) {
+    console.error('[POST /api/v1/wallets]', error);
     return NextResponse.json(
       { error: { code: 'WALLET_CREATION_FAILED', message: 'Failed to create wallet.' } },
       { status: 500 }
