@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { generateRandomStealthMetaAddress } from '@scopelift/stealth-address-sdk';
 import { getBitGoCoin } from '@/lib/bitgo';
-import { prisma } from '@/lib/prisma';
+import { getSupabaseAdmin } from '@stealth/db';
 
 type WalletRow = {
   id: string;
@@ -37,22 +37,18 @@ function internalError(message = 'An internal error occurred.'): NextResponse {
 
 // GET /api/v1/wallets
 export async function GET(): Promise<NextResponse> {
+  const admin = getSupabaseAdmin();
+
   try {
-    const wallets = await prisma.$queryRaw<WalletRow[]>(
-      `SELECT
-        id,
-        label,
-        bitgo_wallet_id,
-        network,
-        public_view_key,
-        public_spend_key,
-        created_at
-      FROM wallets
-      ORDER BY created_at DESC`
-    );
+    const { data: wallets, error } = await (admin as any)
+      .from('wallets')
+      .select('id, label, bitgo_wallet_id, network, public_view_key, public_spend_key, created_at')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
 
     return NextResponse.json({
-      data: wallets,
+      data: wallets ?? [],
       meta: { timestamp: new Date().toISOString() },
     });
   } catch (error) {
@@ -80,16 +76,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { label, passphrase } = parsed.data;
   const network = process.env.BITGO_COIN ?? 'tbtc';
+  const admin = getSupabaseAdmin();
 
   try {
-    const ownerRows = await prisma.$queryRaw<UserIdRow[]>(
-      `SELECT user_id
-      FROM wallets
-      ORDER BY created_at ASC
-      LIMIT 1`
-    );
+    const { data: firstWallet } = await (admin as any)
+      .from('wallets')
+      .select('user_id')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
 
-    const ownerUserId = ownerRows[0]?.user_id;
+    const ownerUserId = (firstWallet as UserIdRow | null)?.user_id;
     if (!ownerUserId) {
       return NextResponse.json(
         {
@@ -114,34 +111,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
     const bitgoWalletId = bitgoWalletResult.wallet.id();
 
-    const inserted = await prisma.$queryRaw<WalletRow[]>(
-      `INSERT INTO wallets (
-        user_id,
+    const { data: inserted, error: insertErr } = await (admin as any)
+      .from('wallets')
+      .insert({
+        user_id: ownerUserId,
         label,
-        bitgo_wallet_id,
+        bitgo_wallet_id: bitgoWalletId,
         network,
-        encrypted_view_priv_key,
-        encrypted_spend_priv_key,
-        public_view_key,
-        public_spend_key
-      )
-      VALUES (
-        '${ownerUserId}',
-        '${label}',
-        '${bitgoWalletId}',
-        '${network}',
-        '${viewingPrivateKey}',
-        '${spendingPrivateKey}',
-        '${viewingPublicKey}',
-        '${spendingPublicKey}'
-      )
-      RETURNING id, label, bitgo_wallet_id, network, public_view_key, public_spend_key, created_at`
-    );
+        encrypted_view_priv_key: viewingPrivateKey,
+        encrypted_spend_priv_key: spendingPrivateKey,
+        public_view_key: viewingPublicKey,
+        public_spend_key: spendingPublicKey,
+      })
+      .select('id, label, bitgo_wallet_id, network, public_view_key, public_spend_key, created_at')
+      .single();
 
-    const wallet = inserted[0];
-    if (!wallet) {
+    if (insertErr || !inserted) {
       return internalError('Failed to persist wallet.');
     }
+
+    const wallet = inserted as WalletRow;
 
     return NextResponse.json(
       {

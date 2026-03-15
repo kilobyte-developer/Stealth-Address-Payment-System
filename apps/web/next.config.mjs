@@ -5,7 +5,7 @@ const require = createRequire(import.meta.url);
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ['@prisma/client', 'bitgo'],
+    serverComponentsExternalPackages: ['bitgo'],
   },
   transpilePackages: ['@stealth/shared', '@stealth/crypto', '@stealth/db'],
   webpack: (config, { isServer }) => {

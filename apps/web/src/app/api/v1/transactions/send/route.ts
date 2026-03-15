@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { generateStealthAddress, VALID_SCHEME_ID } from '@scopelift/stealth-address-sdk';
 import { stealthClient } from '@/lib/stealthClient';
 import { getBitGoCoin } from '@/lib/bitgo';
-import { prisma } from '@/lib/prisma';
+import { getSupabaseAdmin } from '@stealth/db';
 
 // ERC5564Announcer contract address (Sepolia / mainnet address from the ERC-5564 spec).
 // Override via env var for other networks.
@@ -75,14 +75,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     senderAddress,
   } = parsed.data;
 
-  const walletRows = await prisma.$queryRaw<WalletRow[]>(
-    `SELECT id, bitgo_wallet_id, network
-    FROM wallets
-    WHERE id = '${senderWalletId}'
-    LIMIT 1`
-  );
+  const admin = getSupabaseAdmin();
 
-  const wallet = walletRows[0];
+  const { data: walletRow } = await (admin as any)
+    .from('wallets')
+    .select('id, bitgo_wallet_id, network')
+    .eq('id', senderWalletId)
+    .maybeSingle();
+
+  const wallet = walletRow as WalletRow | null;
   if (!wallet) {
     return NextResponse.json(
       { error: { code: 'WALLET_NOT_FOUND', message: 'Sender wallet not found.' } },
@@ -138,30 +139,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
 
     // 4. Record transaction metadata.
-    const txRows = await prisma.$queryRaw<TxRow[]>(
-      `INSERT INTO transactions (
-        wallet_id,
-        tx_hash,
-        direction,
-        amount_sats,
-        ephemeral_public_key,
-        one_time_address,
-        status
-      )
-      VALUES (
-        '${wallet.id}',
-        '${bitgoResult.txid}',
-        'send',
-        ${amountSats},
-        '${ephemeralPublicKey}',
-        '${stealthAddress}',
-        'pending'
-      )
-      RETURNING tx_hash, amount_sats, status, one_time_address, ephemeral_public_key`
-    );
+    const { data: txRow, error: txErr } = await (admin as any)
+      .from('transactions')
+      .insert({
+        wallet_id: wallet.id,
+        tx_hash: bitgoResult.txid,
+        direction: 'send',
+        amount_sats: amountSats,
+        ephemeral_public_key: ephemeralPublicKey,
+        one_time_address: stealthAddress,
+        status: 'pending',
+      })
+      .select('tx_hash, amount_sats, status, one_time_address, ephemeral_public_key')
+      .single();
 
-    const tx = txRows[0];
-    if (!tx) throw new Error('Failed to record transaction');
+    if (txErr || !txRow) throw new Error('Failed to record transaction');
+
+    const tx = txRow as TxRow;
 
     return NextResponse.json(
       {

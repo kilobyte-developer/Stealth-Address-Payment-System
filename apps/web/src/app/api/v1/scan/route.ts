@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { stealthClient } from '@/lib/stealthClient';
-import { prisma } from '@/lib/prisma';
+import { getSupabaseAdmin } from '@stealth/db';
 
 // ERC5564Announcer contract address (override via env for non-mainnet).
 const ERC5564_ADDRESS =
@@ -63,14 +63,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const walletRows = await prisma.$queryRaw<WalletKeysRow[]>(
-    `SELECT id, public_spend_key, encrypted_view_priv_key
-    FROM wallets
-    WHERE id = '${parsed.data.walletId}'
-    LIMIT 1`
-  );
+  const admin = getSupabaseAdmin();
 
-  const wallet = walletRows[0];
+  const { data: walletRow } = await (admin as any)
+    .from('wallets')
+    .select('id, public_spend_key, encrypted_view_priv_key')
+    .eq('id', parsed.data.walletId)
+    .maybeSingle();
+
+  const wallet = walletRow as WalletKeysRow | null;
 
   if (!wallet) {
     return NextResponse.json(
@@ -83,13 +84,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const detected: DetectedPaymentRow[] = [];
 
     // Use SDK to watch on-chain ERC-5564 announcements for this user.
-    // watchAnnouncementsForUser polls the ERC5564Announcer contract and filters
-    // announcements that match the user's viewing private key + spending public key.
     const unwatch = await stealthClient.watchAnnouncementsForUser({
       ERC5564Address: ERC5564_ADDRESS,
       args: {},
       spendingPublicKey: wallet.public_spend_key as `0x${string}`,
-      viewingPrivateKey: wallet.encrypted_view_priv_key as `0x${string}`, // caller must decrypt before storing
+      viewingPrivateKey: wallet.encrypted_view_priv_key as `0x${string}`,
       handleLogsForUser: async (logs) => {
         for (const log of logs) {
           const ephemeralPublicKey = log.ephemeralPubKey as string | undefined;
@@ -99,33 +98,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           if (!ephemeralPublicKey || !stealthAddress || !txHash) continue;
 
           // Deduplicate by tx_hash.
-          const existing = await prisma.$queryRaw<Array<{ id: string }>>(
-            `SELECT id
-            FROM detected_payments
-            WHERE tx_hash = '${txHash}'
-            LIMIT 1`
-          );
+          const { data: existing } = await (admin as any)
+            .from('detected_payments')
+            .select('id')
+            .eq('tx_hash', txHash)
+            .maybeSingle();
 
-          if (existing.length === 0) {
-            const paymentRows = await prisma.$queryRaw<DetectedPaymentRow[]>(
-              `INSERT INTO detected_payments (
-                wallet_id,
-                tx_hash,
-                one_time_address,
-                ephemeral_public_key,
-                amount_sats
+          if (!existing) {
+            const { data: inserted } = await (admin as any)
+              .from('detected_payments')
+              .insert({
+                wallet_id: wallet.id,
+                tx_hash: txHash,
+                one_time_address: stealthAddress,
+                ephemeral_public_key: ephemeralPublicKey,
+                amount_sats: 0,
+              })
+              .select(
+                'id, wallet_id, tx_hash, one_time_address, ephemeral_public_key, amount_sats, created_at'
               )
-              VALUES (
-                '${wallet.id}',
-                '${txHash}',
-                '${stealthAddress}',
-                '${ephemeralPublicKey}',
-                0
-              )
-              RETURNING id, wallet_id, tx_hash, one_time_address, ephemeral_public_key, amount_sats, created_at`
-            );
+              .single();
 
-            if (paymentRows[0]) detected.push(paymentRows[0]);
+            if (inserted) detected.push(inserted as DetectedPaymentRow);
           }
         }
       },
@@ -171,26 +165,28 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const walletId = parsedQuery.data.walletId;
+  const admin = getSupabaseAdmin();
 
   try {
-    let payments: DetectedPaymentRow[];
+    let query = (admin as any)
+      .from('detected_payments')
+      .select(
+        'id, wallet_id, tx_hash, one_time_address, ephemeral_public_key, amount_sats, created_at'
+      )
+      .order('created_at', { ascending: false });
 
     if (walletId) {
-      payments = await prisma.$queryRaw<DetectedPaymentRow[]>(
-        `SELECT id, wallet_id, tx_hash, one_time_address, ephemeral_public_key, amount_sats, created_at
-        FROM detected_payments
-        WHERE wallet_id = '${walletId}'
-        ORDER BY created_at DESC`
-      );
-    } else {
-      payments = await prisma.$queryRaw<DetectedPaymentRow[]>(
-        `SELECT id, wallet_id, tx_hash, one_time_address, ephemeral_public_key, amount_sats, created_at
-        FROM detected_payments
-        ORDER BY created_at DESC`
-      );
+      query = query.eq('wallet_id', walletId);
     }
 
-    return NextResponse.json({ data: payments, meta: { timestamp: new Date().toISOString() } });
+    const { data: payments, error } = await query;
+
+    if (error) throw error;
+
+    return NextResponse.json({
+      data: payments ?? [],
+      meta: { timestamp: new Date().toISOString() },
+    });
   } catch (error) {
     console.error('[GET /api/v1/scan]', error);
     return NextResponse.json(

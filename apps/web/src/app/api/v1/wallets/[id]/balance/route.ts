@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getBitGoCoin } from '@/lib/bitgo';
-import { prisma } from '@/lib/prisma';
+import { getSupabaseAdmin } from '@stealth/db';
 
 type WalletLookupRow = {
   id: string;
@@ -34,14 +34,15 @@ export async function GET(
     );
   }
 
-  const walletRows = await prisma.$queryRaw<WalletLookupRow[]>(
-    `SELECT id, bitgo_wallet_id, network
-    FROM wallets
-    WHERE id = '${parsed.data.id}'
-    LIMIT 1`
-  );
+  const admin = getSupabaseAdmin();
 
-  const wallet = walletRows[0];
+  const { data: walletRow } = await (admin as any)
+    .from('wallets')
+    .select('id, bitgo_wallet_id, network')
+    .eq('id', parsed.data.id)
+    .maybeSingle();
+
+  const wallet = walletRow as WalletLookupRow | null;
 
   if (!wallet) {
     return NextResponse.json(
