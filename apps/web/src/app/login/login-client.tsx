@@ -14,10 +14,12 @@ export default function LoginClientPage(): React.JSX.Element {
     setError(null);
     try {
       const supabase = getSupabaseBrowser();
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+      const redirectTo = new URL('/auth/callback', siteUrl).toString();
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+          redirectTo,
         },
       });
       if (oauthError) {
