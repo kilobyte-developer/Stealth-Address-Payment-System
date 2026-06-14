@@ -18,7 +18,7 @@ console.log(wallet.balance());
 console.log(wallet.spendableBalance());
 
   const result = await wallet.send({
-    address: "tb1pantf20u93x900g92r5g5j9lj3p2cv33zm8v67wnved7zh5yadtpqg4q54s",
+    address: "tb1pdnrat5utauj9cdlzqnw53f93k4vhvpf688j2yd4dkte5l08ldxcsjdvrtj",
     amount: 10000, // satoshis (0.0001 TBTC)
     walletPassphrase: "strong-passphrase"
   });
