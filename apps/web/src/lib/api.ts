@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getSupabaseBrowser } from './supabase-browser';
 
 const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? '/api/v1';
 
@@ -24,8 +25,21 @@ export const apiClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach JWT token from localStorage on every request
-apiClient.interceptors.request.use((config) => {
+// Attach JWT token from Supabase session or localStorage on every request
+apiClient.interceptors.request.use(async (config) => {
+  // First try Supabase session (from OAuth)
+  try {
+    const supabase = getSupabaseBrowser();
+    const { data } = await supabase.auth.getSession();
+    if (data.session?.access_token) {
+      config.headers.Authorization = `Bearer ${data.session.access_token}`;
+      return config;
+    }
+  } catch {
+    // Fall through to localStorage check
+  }
+
+  // Fall back to localStorage token
   const token = getPersistedToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
